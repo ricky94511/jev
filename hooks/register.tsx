@@ -46,7 +46,7 @@ let notice: { isOn: boolean; route?: Route; failed?: boolean } | undefined
 const calls = { ask: 0, batch: 0 }
 const JEV_CALL = /jev\.py\b[^\n]*?\s(ask|batch)\b/g
 
-// 每輪結束在對話裡留一行：JEV 有沒有開、這句怎麼判斷、實際用哪個模型、ask／batch 用了幾次
+// 每輪結束跳一個 toast：JEV 有沒有開、這句怎麼判斷、實際用哪個模型、ask／batch 用了幾次
 const noticeText = (n: NonNullable<typeof notice>) => {
   if (!n.isOn) return 'JEV：關（這輪沒用到 JEV）'
   const parts = ['JEV：開']
@@ -228,7 +228,7 @@ export const register: Register = on => {
     decided.delete(e.turnId)
     await refresh($)
     if (notice && e.agentId === undefined) {
-      $.ui.log(noticeText(notice))
+      $.ui.toast(noticeText(notice), { timeoutMs: 8000 })
       notice = undefined
     }
     return done

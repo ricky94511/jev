@@ -144,10 +144,10 @@ test('開關按鈕與 /jev 指令', async ($, on) => {
   expect(JSON.stringify(r)).toContain('JEV 開關：關')
 })
 
-test('每輪結束在對話裡留一行：開關、判斷、模型、ask／batch 次數', async ($, on) => {
+test('每輪結束跳 toast：開關、判斷、模型、ask／batch 次數', async ($, on) => {
   const w = setup(on)
   const logs: string[] = []
-  on('ui.log', ($, e) => { logs.push(e.text); return { value: undefined } })
+  on('ui.toast', ($, e) => { logs.push(e.text); return { value: undefined } })
   on('tool.call', () => ({ result: { text: 'ok' } }) as never)
   on('turn.complete', ($, e) => ({ text: e.answer }))
   const done = (turnId: string, agentId?: string) =>
