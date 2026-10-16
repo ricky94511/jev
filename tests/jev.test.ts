@@ -144,35 +144,15 @@ test('開關按鈕與 /jev 指令', async ($, on) => {
   expect(JSON.stringify(r)).toContain('JEV 開關：關')
 })
 
-test('每輪結束跳 toast：開關、判斷、模型、ask／batch 次數', async ($, on) => {
+test('每輪請 Claude 在回答最後加一行 JEV 通知', async ($, on) => {
   const w = setup(on)
-  const logs: string[] = []
-  on('ui.toast', ($, e) => { logs.push(e.text); return { value: undefined } })
-  on('tool.call', () => ({ result: { text: 'ok' } }) as never)
-  on('turn.complete', ($, e) => ({ text: e.answer }))
-  const done = (turnId: string, agentId?: string) =>
-    $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId, agentId, reason: 'answer' })
-
   await turn($, 'a')
-  await $.tool.call({ tool: 'Bash', command: "python3 /x/jev/bin/jev.py ask --state '{}' --q '{}'" } as never)
-  await $.tool.call({ tool: 'Bash', command: 'python3 /x/jev/bin/jev.py batch a.csv --q x && jev.py ask --q y' } as never)
-  await $.tool.call({ tool: 'Bash', command: 'ls' } as never)
-  await done('a', 'sub') // 子代理結束不記
-  expect(logs).toEqual([])
-  await done('a')
-  expect(logs).toEqual(['JEV：開 · 判斷 haiku（信心 0.90） · 這輪用 haiku · 呼叫 ask ×2、batch ×1'])
-
+  expect(w.contexts.at(-1)?.join('\n')).toContain('> JEV：開 · 判斷 haiku（信心 0.90） · <用量>')
+  w.route = 'not json' as never
   await turn($, 'b')
-  await done('b')
-  expect(logs.at(-1)).toContain('沒有呼叫 ask／batch')
-
+  expect(w.contexts.at(-1)?.join('\n')).toContain('> JEV：開 · 判斷失敗')
   w.isOn = false
   await turn($, 'c')
-  await done('c')
-  expect(logs.at(-1)).toBe('JEV：關（這輪沒用到 JEV）')
-
-  // 機器送的訊息不記
-  await $.prompt.submit({ text: '背景完成', wait: false, origin: { kind: 'task-notification' } })
-  await done('d')
-  expect(logs.length).toBe(3)
+  expect(w.contexts.at(-1)?.join('\n')).toContain('> JEV：關')
+  expect(w.contexts.at(-1)?.join('\n')).not.toContain('[JEV 開關：開]')
 })

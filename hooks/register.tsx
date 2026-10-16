@@ -41,22 +41,9 @@ const planned = new Map<string, Tier>()
 const decided = new Map<string, Tier>()
 let lastUsed: Tier | undefined
 let lastHint = ''
-// 這一輪要不要在結束時記一行通知（人送的 prompt 才記），與這一輪 ask／batch 被呼叫幾次
-let notice: { isOn: boolean; route?: Route; failed?: boolean } | undefined
-const calls = { ask: 0, batch: 0 }
-const JEV_CALL = /jev\.py\b[^\n]*?\s(ask|batch)\b/g
-
-// 每輪結束跳一個 toast：JEV 有沒有開、這句怎麼判斷、實際用哪個模型、ask／batch 用了幾次
-const noticeText = (n: NonNullable<typeof notice>) => {
-  if (!n.isOn) return 'JEV：關（這輪沒用到 JEV）'
-  const parts = ['JEV：開']
-  if (n.route) parts.push(`判斷 ${n.route.tier}（信心 ${n.route.tier_conf.toFixed(2)}）`)
-  else if (n.failed) parts.push('判斷失敗')
-  if (lastUsed) parts.push(`這輪用 ${lastUsed}`)
-  const used = [calls.ask && `ask ×${calls.ask}`, calls.batch && `batch ×${calls.batch}`].filter(Boolean)
-  parts.push(used.length ? `呼叫 ${used.join('、')}` : '沒有呼叫 ask／batch')
-  return parts.join(' · ')
-}
+// 每輪請 Claude 在回答最後加一行通知（App 的雲端對話看不到外掛的 toast 與 ui.log，只有回答本身一定看得到）
+const noticeAsk = (line: string) =>
+  `回答的最後另起一行，原樣加上這行通知（把 <用量> 換成你這一輪實際呼叫 jev.py ask／batch 的次數，例如「ask ×2」，沒呼叫就寫「沒用到 ask／batch」）：\n> ${line} · <用量>`
 
 const switchSvg = (on: boolean) => {
   const track = on ? '#34C759' : '#3A3A3C'
@@ -155,11 +142,7 @@ export const register: Register = on => {
     lastRoute = undefined
     lastHint = ''
     if (!isPerson || !text || text.startsWith('/jev')) return next(e)
-    calls.ask = 0
-    calls.batch = 0
-    const enabled = await current($)
-    notice = { isOn: enabled }
-    if (!enabled) return next(e)
+    if (!(await current($))) return next({ ...e, context: [...(e.context ?? []), '回答的最後另起一行，原樣加上：\n> JEV：關'] })
 
     const ctx = [await rulesFor($)]
     const { exitCode, stdout, stderr } = await jev($, ['route', text, '--skills-dir', `${$.plugin.root}/skills`], 12_000)
@@ -167,7 +150,6 @@ export const register: Register = on => {
       try {
         const r = JSON.parse(stdout) as Route
         lastRoute = { text, route: r }
-        notice.route = r
         lastHint = ` · 建議 ${r.tier}（${r.tier_conf.toFixed(2)}）`
         let hint = `JEV 對這句的判斷：建議模型等級 ${r.tier}（信心 ${r.tier_conf.toFixed(2)}）`
         if (r.skill && r.skill !== 'none') {
@@ -175,14 +157,14 @@ export const register: Register = on => {
         }
         if (r.judgment >= JUDGMENT_HINT) hint += '；這個請求含有分類／判斷步驟，照上面的規則交給 JEV'
         hint += '。JEV 外掛已依此自動切換這一輪的模型（狀態列顯示），不用提醒使用者；你不要自己切換模型。'
-        ctx.push(hint)
+        ctx.push(hint, noticeAsk(`JEV：開 · 判斷 ${r.tier}（信心 ${r.tier_conf.toFixed(2)}）`))
       } catch {
         lastHint = ' · 判斷失敗'
-        notice.failed = true
+        ctx.push(noticeAsk('JEV：開 · 判斷失敗'))
       }
     } else {
       lastHint = ' · 判斷失敗'
-      notice.failed = true
+      ctx.push(noticeAsk('JEV：開 · 判斷失敗'))
       $.ui.log(`JEV route 失敗：${stderr.trim().slice(0, 200)}`, { to: 'debug' })
     }
     await refresh($)
@@ -216,21 +198,11 @@ export const register: Register = on => {
     return result
   })
 
-  // 數 Claude 這一輪呼叫了幾次 jev.py ask／batch（子代理也算）
-  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    for (const m of e.command.matchAll(JEV_CALL)) calls[m[1] as 'ask' | 'batch']++
-    return next(e)
-  })
-
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
     planned.delete(e.turnId)
     decided.delete(e.turnId)
     await refresh($)
-    if (notice && e.agentId === undefined) {
-      $.ui.toast(noticeText(notice), { timeoutMs: 8000 })
-      notice = undefined
-    }
     return done
   })
 
