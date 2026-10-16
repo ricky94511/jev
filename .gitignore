@@ -2,3 +2,6 @@
 .claude-plugin/types/
 tsconfig.json
 __pycache__/
+# 金鑰只在打包上傳時放進 zip，絕不進 git
+jev.key
+*.zip

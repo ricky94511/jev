@@ -84,9 +84,13 @@ def api_key():
          or _env_from(Path.home() / ".claude" / "settings.json"))
     if k:
         return k
+    # 上傳到 Cowork 的 zip 讀不到環境變數：打包時把金鑰放在外掛根目錄的 jev.key（不進 git，見 scripts/pack.sh）
+    key_file = Path(__file__).resolve().parent.parent / "jev.key"
+    if key_file.is_file() and key_file.read_text().strip():
+        return key_file.read_text().strip()
     if os.environ.get("CLAUDE_CODE_REMOTE") and os.environ.get("HTTPS_PROXY"):
         return "proxy-injected"  # 雲端：代理會換成環境 secrets 裡的真金鑰
-    raise RuntimeError("沒有 TYPESAFE_API_KEY（本機設在 ~/.claude/settings.json 的 env；雲端設在環境 secrets）")
+    raise RuntimeError("沒有 TYPESAFE_API_KEY（本機設在 ~/.claude/settings.json 的 env；雲端設在環境 secrets；Cowork 用 scripts/pack.sh 打包）")
 
 
 def call(state, questions, assets=None, timeout=30, tag="ask"):
