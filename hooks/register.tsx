@@ -92,23 +92,23 @@ const readRoute = (text: string): Tier | undefined => {
 }
 
 // 這一輪用哪個等級：JEV 建議 × 黏著的模型 × 對話長度
-const decide = async ($: EngineInterface, turnId: string, session: Tier): Promise<Tier> => {
+// 這一輪用哪個等級（只算不改）：回傳實際等級，與之後要黏著的模型（undefined = 不變）
+const plan = async ($: EngineInterface, want: Tier | undefined, session: Tier) => {
   const base = (await read($, home)) ?? session
-  const want = planned.get(turnId)
-  if (!want || want === base) return base
+  if (!want || want === base) return { tier: base }
   const rank = (t: Tier) => TIERS.indexOf(t)
-  if (rank(want) > rank(base)) {
-    // 升級：之後的對話黏在升上去的模型（回到 session 本來的就清掉）
-    await update($, home, () => (want === session ? null : want))
-    return want
-  }
+  // 升級：之後的對話黏在升上去的模型（回到 session 本來的就清掉）
+  if (rank(want) > rank(base)) return { tier: want, home: want === session ? null : want }
   const tokens = await read($, contextTokens)
-  if (want === 'haiku') return tokens <= HAIKU_MAX_CONTEXT ? 'haiku' : base
-  if (want === 'sonnet' && tokens === 0) {
-    await update($, home, () => 'sonnet')
-    return 'sonnet'
-  }
-  return base
+  if (want === 'haiku') return { tier: tokens <= HAIKU_MAX_CONTEXT ? 'haiku' : base }
+  if (want === 'sonnet' && tokens === 0) return { tier: 'sonnet' as Tier, home: 'sonnet' as HomeTier }
+  return { tier: base }
+}
+
+const decide = async ($: EngineInterface, turnId: string, session: Tier): Promise<Tier> => {
+  const p = await plan($, planned.get(turnId), session)
+  if (p.home !== undefined) await update($, home, () => p.home as HomeTier)
+  return p.tier as Tier
 }
 
 const toggleText = async ($: EngineInterface, cmd: string) => {
@@ -157,7 +157,12 @@ export const register: Register = on => {
         }
         if (r.judgment >= JUDGMENT_HINT) hint += '；這個請求含有分類／判斷步驟，照上面的規則交給 JEV'
         hint += '。JEV 外掛已依此自動切換這一輪的模型（狀態列顯示），不用提醒使用者；你不要自己切換模型。'
-        ctx.push(hint, noticeAsk(`JEV：開 · 判斷 ${r.tier}（信心 ${r.tier_conf.toFixed(2)}）`))
+        // 送出時就算好這一輪實際用的模型（跟 turn.step 的決定同一套規則、同一份狀態）
+        const model = await $.session.model()
+        const session = tierOf(model)
+        const want = r.tier_conf >= MIN_CONF ? TIERS.find(t => t === r.tier) : undefined
+        const used = session ? MODEL_ID[(await plan($, want, session)).tier as Tier] : model
+        ctx.push(hint, noticeAsk(`JEV：開 · 判斷 ${r.tier}（信心 ${r.tier_conf.toFixed(2)}） · 這輪用 ${used}`))
       } catch {
         lastHint = ' · 判斷失敗'
         ctx.push(noticeAsk('JEV：開 · 判斷失敗'))

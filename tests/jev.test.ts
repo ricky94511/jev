@@ -50,6 +50,7 @@ const setup = (on: On, over: Partial<World> = {}): World => {
     return ok(`JEV 開關：${w.isOn ? '開' : '關'}\n`)
   })
   on('session.root', () => ({ value: ROOT }))
+  on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('fs.exists', ($, e) => ({ value: e.path === `${ROOT}/.claude/jev_rules.md` && w.rules !== null }))
   on('fs.read', () => ({ value: w.rules ?? '' }))
   on('prompt.submit', ($, e) => {
@@ -147,7 +148,12 @@ test('開關按鈕與 /jev 指令', async ($, on) => {
 test('每輪請 Claude 在回答最後加一行 JEV 通知', async ($, on) => {
   const w = setup(on)
   await turn($, 'a')
-  expect(w.contexts.at(-1)?.join('\n')).toContain('> JEV：開 · 判斷 haiku（信心 0.90） · <用量>')
+  expect(w.contexts.at(-1)?.join('\n')).toContain('> JEV：開 · 判斷 haiku（信心 0.90） · 這輪用 claude-haiku-5-5 · <用量>')
+  expect(w.models.at(-1)).toBe('claude-haiku-5-5')
+  w.route = { tier: 'haiku', tier_conf: 0.4, judgment: 0 } // 信心不夠 → 不換，通知也照實寫
+  await turn($, 'a2')
+  expect(w.contexts.at(-1)?.join('\n')).toContain('判斷 haiku（信心 0.40） · 這輪用 claude-opus-5-5')
+  expect(w.models.at(-1)).toBe('claude-opus-5-5')
   w.route = 'not json' as never
   await turn($, 'b')
   expect(w.contexts.at(-1)?.join('\n')).toContain('> JEV：開 · 判斷失敗')

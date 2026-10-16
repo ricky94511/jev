@@ -10,7 +10,7 @@
 每輪 Claude 會在回答最後加一行通知（App 的雲端對話看不到外掛的 toast，所以寫進回答裡），例如：
 
 ```
-> JEV：開 · 判斷 haiku（信心 0.98） · ask ×1
+> JEV：開 · 判斷 haiku（信心 0.98） · 這輪用 claude-haiku-5-5 · ask ×1
 > JEV：關
 ```
 
