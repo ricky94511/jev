@@ -41,6 +41,22 @@ const planned = new Map<string, Tier>()
 const decided = new Map<string, Tier>()
 let lastUsed: Tier | undefined
 let lastHint = ''
+// 這一輪要不要在結束時記一行通知（人送的 prompt 才記），與這一輪 ask／batch 被呼叫幾次
+let notice: { isOn: boolean; route?: Route; failed?: boolean } | undefined
+const calls = { ask: 0, batch: 0 }
+const JEV_CALL = /jev\.py\b[^\n]*?\s(ask|batch)\b/g
+
+// 每輪結束在對話裡留一行：JEV 有沒有開、這句怎麼判斷、實際用哪個模型、ask／batch 用了幾次
+const noticeText = (n: NonNullable<typeof notice>) => {
+  if (!n.isOn) return 'JEV：關（這輪沒用到 JEV）'
+  const parts = ['JEV：開']
+  if (n.route) parts.push(`判斷 ${n.route.tier}（信心 ${n.route.tier_conf.toFixed(2)}）`)
+  else if (n.failed) parts.push('判斷失敗')
+  if (lastUsed) parts.push(`這輪用 ${lastUsed}`)
+  const used = [calls.ask && `ask ×${calls.ask}`, calls.batch && `batch ×${calls.batch}`].filter(Boolean)
+  parts.push(used.length ? `呼叫 ${used.join('、')}` : '沒有呼叫 ask／batch')
+  return parts.join(' · ')
+}
 
 const switchSvg = (on: boolean) => {
   const track = on ? '#34C759' : '#3A3A3C'
@@ -138,7 +154,12 @@ export const register: Register = on => {
     const text = e.text.trim()
     lastRoute = undefined
     lastHint = ''
-    if (!isPerson || !text || text.startsWith('/jev') || !(await current($))) return next(e)
+    if (!isPerson || !text || text.startsWith('/jev')) return next(e)
+    calls.ask = 0
+    calls.batch = 0
+    const enabled = await current($)
+    notice = { isOn: enabled }
+    if (!enabled) return next(e)
 
     const ctx = [await rulesFor($)]
     const { exitCode, stdout, stderr } = await jev($, ['route', text, '--skills-dir', `${$.plugin.root}/skills`], 12_000)
@@ -146,6 +167,7 @@ export const register: Register = on => {
       try {
         const r = JSON.parse(stdout) as Route
         lastRoute = { text, route: r }
+        notice.route = r
         lastHint = ` · 建議 ${r.tier}（${r.tier_conf.toFixed(2)}）`
         let hint = `JEV 對這句的判斷：建議模型等級 ${r.tier}（信心 ${r.tier_conf.toFixed(2)}）`
         if (r.skill && r.skill !== 'none') {
@@ -156,9 +178,11 @@ export const register: Register = on => {
         ctx.push(hint)
       } catch {
         lastHint = ' · 判斷失敗'
+        notice.failed = true
       }
     } else {
       lastHint = ' · 判斷失敗'
+      notice.failed = true
       $.ui.log(`JEV route 失敗：${stderr.trim().slice(0, 200)}`, { to: 'debug' })
     }
     await refresh($)
@@ -192,11 +216,21 @@ export const register: Register = on => {
     return result
   })
 
+  // 數 Claude 這一輪呼叫了幾次 jev.py ask／batch（子代理也算）
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    for (const m of e.command.matchAll(JEV_CALL)) calls[m[1] as 'ask' | 'batch']++
+    return next(e)
+  })
+
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
     planned.delete(e.turnId)
     decided.delete(e.turnId)
     await refresh($)
+    if (notice && e.agentId === undefined) {
+      $.ui.log(noticeText(notice))
+      notice = undefined
+    }
     return done
   })
 
