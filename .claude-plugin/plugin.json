@@ -1,0 +1,7 @@
+{
+  "name": "jev",
+  "version": "0.1.0",
+  "description": "每句 prompt 先由 JEV 判斷模型等級並自動切換，分類／打分／是非判斷交給 JEV；提示框上方有開關，/jev on|off|status",
+  "author": { "name": "ricky94511" },
+  "types": "./types/index.d.ts"
+}

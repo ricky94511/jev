@@ -1,0 +1,4 @@
+# 引擎載入時自動產生的型別與 tsconfig
+.claude-plugin/types/
+tsconfig.json
+__pycache__/

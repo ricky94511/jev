@@ -1,0 +1,14 @@
+{
+  "name": "jev",
+  "owner": {
+    "name": "ricky94511"
+  },
+  "plugins": [
+    {
+      "name": "jev",
+      "source": "./",
+      "description": "JEV 自動判斷模型等級與分類／打分／是非判斷"
+    }
+  ],
+  "description": "JEV（TypeSafe）判斷模型等級與分類／打分／是非判斷的 Claude Code 外掛"
+}
