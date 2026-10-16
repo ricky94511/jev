@@ -21,6 +21,7 @@ type World = {
   runs: string[][]
   models: string[]
   contexts: (readonly string[] | undefined)[]
+  routeError?: string
 }
 
 // 外掛底下的世界：jev.py、檔案、session、模型呼叫
@@ -42,7 +43,10 @@ const setup = (on: On, over: Partial<World> = {}): World => {
     const args = e.argv.slice(4) // python3 jev.py --project ROOT ...
     w.runs.push([...args])
     if (args[0] === 'state') return ok(w.isOn ? 'on\n' : 'off\n')
-    if (args[0] === 'route') return ok(JSON.stringify(w.route))
+    if (args[0] === 'route') {
+      if (w.routeError) return { value: { exitCode: 1, stdout: '', stderr: w.routeError, isStdoutTruncated: false, isStderrTruncated: false } }
+      return ok(JSON.stringify(w.route))
+    }
     if (args[0] === 'on' || args[0] === 'off') {
       w.isOn = args[0] === 'on'
       return ok(`JEV 開關：${w.isOn ? '開' : '關'}\n`)
@@ -156,7 +160,11 @@ test('每輪請 Claude 在回答最後加一行 JEV 通知', async ($, on) => {
   expect(w.models.at(-1)).toBe('claude-opus-5-5')
   w.route = 'not json' as never
   await turn($, 'b')
-  expect(w.contexts.at(-1)?.join('\n')).toContain('> JEV：開 · 判斷失敗')
+  expect(w.contexts.at(-1)?.join('\n')).toContain('> JEV：開 · 判斷失敗（回傳看不懂） · 這輪用 claude-opus-5-5 · <用量>')
+  w.routeError = '沒有 TYPESAFE_API_KEY（本機設在 ~/.claude/settings.json 的 env；雲端設在環境 secrets）'
+  await turn($, 'b2')
+  expect(w.contexts.at(-1)?.join('\n')).toContain('> JEV：開 · 判斷失敗（沒有 TYPESAFE_API_KEY） · 這輪用 claude-opus-5-5 · <用量>')
+  w.routeError = undefined
   w.isOn = false
   await turn($, 'c')
   expect(w.contexts.at(-1)?.join('\n')).toContain('> JEV：關')

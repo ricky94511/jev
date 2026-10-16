@@ -105,6 +105,22 @@ const plan = async ($: EngineInterface, want: Tier | undefined, session: Tier) =
   return { tier: base }
 }
 
+// 送出時就算好這一輪實際用的模型（跟 turn.step 的決定同一套規則、同一份狀態）
+const usedModel = async ($: EngineInterface, want: Tier | undefined) => {
+  const model = await $.session.model()
+  const session = tierOf(model)
+  return session ? MODEL_ID[(await plan($, want, session)).tier as Tier] : model
+}
+
+// route 失敗的原因，取一句短的放進通知（例如沒有金鑰、連不上 JEV）
+const failReason = (stderr: string) => {
+  const err = stderr.trim()
+  if (err.includes('TYPESAFE_API_KEY')) return '沒有 TYPESAFE_API_KEY'
+  if (/No such file|can't open file/.test(err)) return '找不到 jev.py'
+  const last = err.split('\n').filter(Boolean).at(-1) ?? ''
+  return last ? last.slice(0, 60) : '原因不明'
+}
+
 const decide = async ($: EngineInterface, turnId: string, session: Tier): Promise<Tier> => {
   const p = await plan($, planned.get(turnId), session)
   if (p.home !== undefined) await update($, home, () => p.home as HomeTier)
@@ -157,19 +173,15 @@ export const register: Register = on => {
         }
         if (r.judgment >= JUDGMENT_HINT) hint += '；這個請求含有分類／判斷步驟，照上面的規則交給 JEV'
         hint += '。JEV 外掛已依此自動切換這一輪的模型（狀態列顯示），不用提醒使用者；你不要自己切換模型。'
-        // 送出時就算好這一輪實際用的模型（跟 turn.step 的決定同一套規則、同一份狀態）
-        const model = await $.session.model()
-        const session = tierOf(model)
         const want = r.tier_conf >= MIN_CONF ? TIERS.find(t => t === r.tier) : undefined
-        const used = session ? MODEL_ID[(await plan($, want, session)).tier as Tier] : model
-        ctx.push(hint, noticeAsk(`JEV：開 · 判斷 ${r.tier}（信心 ${r.tier_conf.toFixed(2)}） · 這輪用 ${used}`))
+        ctx.push(hint, noticeAsk(`JEV：開 · 判斷 ${r.tier}（信心 ${r.tier_conf.toFixed(2)}） · 這輪用 ${await usedModel($, want)}`))
       } catch {
         lastHint = ' · 判斷失敗'
-        ctx.push(noticeAsk('JEV：開 · 判斷失敗'))
+        ctx.push(noticeAsk(`JEV：開 · 判斷失敗（回傳看不懂） · 這輪用 ${await usedModel($, undefined)}`))
       }
     } else {
       lastHint = ' · 判斷失敗'
-      ctx.push(noticeAsk('JEV：開 · 判斷失敗'))
+      ctx.push(noticeAsk(`JEV：開 · 判斷失敗（${failReason(stderr)}） · 這輪用 ${await usedModel($, undefined)}`))
       $.ui.log(`JEV route 失敗：${stderr.trim().slice(0, 200)}`, { to: 'debug' })
     }
     await refresh($)
