@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import type { HomeTier, JevState } from '../types'
 
-// 每句 prompt 先問 JEV（bin/jev.py route），把「哪些步驟交給 JEV」的規則附給 Claude，
+// 每句 prompt 先問 JEV（scripts/jev.py route），把「哪些步驟交給 JEV」的規則附給 Claude，
 // 再依 JEV 建議的等級自動切換這一輪的模型；提示框上方畫開關，/jev on|off|status 切換。
 
 // 畫面每次直接問 jev.py；這個值只用來在切換後觸發重畫
@@ -55,7 +55,7 @@ const switchSvg = (on: boolean) => {
 }
 
 const jev = async ($: EngineInterface, args: string[], timeoutMs = 30_000) =>
-  $.process.run(['python3', `${$.plugin.root}/bin/jev.py`, '--project', await $.session.root(), ...args], {
+  $.process.run(['python3', `${$.plugin.root}/scripts/jev.py`, '--project', await $.session.root(), ...args], {
     timeoutMs,
   })
 
@@ -72,7 +72,7 @@ const refresh = async ($: EngineInterface) => {
 }
 
 const rulesFor = async ($: EngineInterface) => {
-  const cli = `python3 ${$.plugin.root}/bin/jev.py`
+  const cli = `python3 ${$.plugin.root}/scripts/jev.py`
   const base = `[JEV 開關：開] 流程中「只是分類、打分、是非判斷」的步驟交給 JEV，不要自己判斷：
 - 單筆：\`${cli} ask --state '{"x":"..."}' --q '{"q":{"type":"noul","instructions":"..."}}'\`（可加 --image 圖）
 - 一批（CSV 每列做同一個判斷，結果加成新欄位）：\`${cli} batch <檔案.csv> --column <欄位> --q '{...}' --out <輸出.csv>\`

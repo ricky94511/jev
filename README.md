@@ -3,7 +3,7 @@
 [JEV（TypeSafe System One）](https://docs.typesafe.ai/introduction)只回答選擇題、打分、是非題，快又便宜。這個 Claude Code 外掛用它做兩件事：
 
 1. **每句 prompt 先問 JEV**：建議這一輪用哪個模型（haiku／sonnet／opus），並**自動切換**；同時把「哪些步驟交給 JEV」的規則附給 Claude。
-2. **分類、打分、是非判斷交給 JEV**：`bin/jev.py ask`（單筆）、`bin/jev.py batch`（整份 CSV）。
+2. **分類、打分、是非判斷交給 JEV**：`scripts/jev.py ask`（單筆）、`scripts/jev.py batch`（整份 CSV）。
 
 提示框上方有開關，也可以用 `/jev on|off|status`。開關是每個專案各自的，存在 `~/.claude/jev/`。
 
